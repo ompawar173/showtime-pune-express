@@ -26,6 +26,7 @@ import { Route as OrganizerIndexRouteImport } from './routes/organizer.index'
 import { Route as OrganizerOrdersRouteImport } from './routes/organizer.orders'
 import { Route as AdminEventsIndexRouteImport } from './routes/admin.events.index'
 import { Route as AdminEventsEventIdRouteImport } from './routes/admin.events.$eventId'
+import { Route as EventsEventIdIndexRouteImport } from './routes/events.$eventId.index'
 import { Route as EventsEventIdBookRouteImport } from './routes/events.$eventId.book'
 import { Route as OrganizerEventsIndexRouteImport } from './routes/organizer.events.index'
 import { Route as OrganizerEventsEventIdRouteImport } from './routes/organizer.events.$eventId'
@@ -116,6 +117,11 @@ const AdminEventsEventIdRoute = AdminEventsEventIdRouteImport.update({
   path: '/events/$eventId',
   getParentRoute: () => AdminRoute,
 } as any)
+const EventsEventIdIndexRoute = EventsEventIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => EventsEventIdRoute,
+} as any)
 const EventsEventIdBookRoute = EventsEventIdBookRouteImport.update({
   id: '/book',
   path: '/book',
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/organizer/events/create': typeof OrganizerEventsCreateRoute
   '/admin/events/': typeof AdminEventsIndexRoute
+  '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/organizer/events/': typeof OrganizerEventsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -168,7 +175,6 @@ export interface FileRoutesByTo {
   '/payment': typeof PaymentRoute
   '/profile': typeof ProfileRoute
   '/ticket': typeof TicketRoute
-  '/events/$eventId': typeof EventsEventIdRouteWithChildren
   '/organizer/orders': typeof OrganizerOrdersRoute
   '/admin': typeof AdminIndexRoute
   '/events': typeof EventsIndexRoute
@@ -178,6 +184,7 @@ export interface FileRoutesByTo {
   '/organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/organizer/events/create': typeof OrganizerEventsCreateRoute
   '/admin/events': typeof AdminEventsIndexRoute
+  '/events/$eventId': typeof EventsEventIdIndexRoute
   '/organizer/events': typeof OrganizerEventsIndexRoute
 }
 export interface FileRoutesById {
@@ -202,6 +209,7 @@ export interface FileRoutesById {
   '/organizer/events/$eventId': typeof OrganizerEventsEventIdRoute
   '/organizer/events/create': typeof OrganizerEventsCreateRoute
   '/admin/events/': typeof AdminEventsIndexRoute
+  '/events/$eventId/': typeof EventsEventIdIndexRoute
   '/organizer/events/': typeof OrganizerEventsIndexRoute
 }
 export interface FileRouteTypes {
@@ -227,6 +235,7 @@ export interface FileRouteTypes {
     | '/organizer/events/$eventId'
     | '/organizer/events/create'
     | '/admin/events/'
+    | '/events/$eventId/'
     | '/organizer/events/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -237,7 +246,6 @@ export interface FileRouteTypes {
     | '/payment'
     | '/profile'
     | '/ticket'
-    | '/events/$eventId'
     | '/organizer/orders'
     | '/admin'
     | '/events'
@@ -247,6 +255,7 @@ export interface FileRouteTypes {
     | '/organizer/events/$eventId'
     | '/organizer/events/create'
     | '/admin/events'
+    | '/events/$eventId'
     | '/organizer/events'
   id:
     | '__root__'
@@ -270,6 +279,7 @@ export interface FileRouteTypes {
     | '/organizer/events/$eventId'
     | '/organizer/events/create'
     | '/admin/events/'
+    | '/events/$eventId/'
     | '/organizer/events/'
   fileRoutesById: FileRoutesById
 }
@@ -407,6 +417,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminEventsEventIdRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/events/$eventId/': {
+      id: '/events/$eventId/'
+      path: '/'
+      fullPath: '/events/$eventId/'
+      preLoaderRoute: typeof EventsEventIdIndexRouteImport
+      parentRoute: typeof EventsEventIdRoute
+    }
     '/events/$eventId/book': {
       id: '/events/$eventId/book'
       path: '/book'
@@ -454,10 +471,12 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 interface EventsEventIdRouteChildren {
   EventsEventIdBookRoute: typeof EventsEventIdBookRoute
+  EventsEventIdIndexRoute: typeof EventsEventIdIndexRoute
 }
 
 const EventsEventIdRouteChildren: EventsEventIdRouteChildren = {
   EventsEventIdBookRoute: EventsEventIdBookRoute,
+  EventsEventIdIndexRoute: EventsEventIdIndexRoute,
 }
 
 const EventsEventIdRouteWithChildren = EventsEventIdRoute._addFileChildren(
