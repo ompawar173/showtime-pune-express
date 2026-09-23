@@ -1,0 +1,1084 @@
+import { Link, useParams, useNavigate } from '@tanstack/react-router'
+import { useMemo, useState, useEffect } from 'react'
+import { ArrowRight, CalendarDays, Check, CheckCircle2, ChevronRight, Clock3, MapPin, QrCode, ShieldCheck, Sparkles, Theater, Ticket as TicketIcon, XCircle, Hourglass } from 'lucide-react'
+import homeHero from '@/assets/home-hero-theatre.jpg'
+import homeMarathi from '@/assets/home-marathi-theatre.jpg'
+import homeDrama from '@/assets/home-hindi-drama.jpg'
+import homeComedy from '@/assets/home-comedy.jpg'
+import homeExperimental from '@/assets/home-experimental-theatre.jpg'
+import homeAuditorium from '@/assets/home-theatre-auditorium.jpg'
+import homeFinalStage from '@/assets/home-final-stage.jpg'
+import { events as initialEvents, primaryEvent, myTickets as initialTickets } from '@/mock/events'
+import { getPublishedEvents, getEventBySlug, getEventSessions, getSessionTicketTypes, createOrder, simulatePayment, getMyTickets, getUserProfile } from '@/services/supabase'
+import { supabase } from '@/lib/supabase'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { EventGrid } from '@/components/app/EventCard'
+import { PageIntro, QuantitySelector, SearchBar, StatusBadge } from '@/components/app/Shared'
+import { SiteLayout } from '@/components/app/SiteChrome'
+import type { EventItem, Session, TicketType, Ticket } from '@/types'
+import { toast } from 'sonner'
+
+const Section = ({ children, soft = false }: { children: React.ReactNode; soft?: boolean }) => (
+  <section className={soft ? 'bg-soft py-16 sm:py-20' : 'py-16 sm:py-20'}>
+    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">{children}</div>
+  </section>
+)
+
+const SectionHead = ({ title, copy, link }: { title: string; copy: string; link?: boolean }) => (
+  <div className="mb-8 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-4">
+    <div className="min-w-0">
+      <h2 className="font-display text-3xl font-extrabold sm:text-4xl">{title}</h2>
+      <p className="mt-2 text-muted-foreground">{copy}</p>
+    </div>
+    {link && (
+      <Button variant="ghost" asChild>
+        <Link to="/events">
+          View all <ArrowRight />
+        </Link>
+      </Button>
+    )}
+  </div>
+)
+
+const homeShows = [
+  { event: initialEvents[0], image: homeMarathi, rating: '4.9' },
+  { event: initialEvents[1], image: homeDrama, rating: '4.8' },
+  { event: initialEvents[2], image: homeComedy, rating: '4.7' },
+  { event: initialEvents[3], image: homeExperimental, rating: '4.8' },
+].filter((item): item is { event: EventItem; image: string; rating: string } => Boolean(item.event))
+
+const storyCards = [
+  { title: 'Theatre', image: homeMarathi, position: 'object-center' },
+  { title: 'Drama', image: homeDrama, position: 'object-center' },
+  { title: 'Comedy', image: homeComedy, position: 'object-center' },
+  { title: 'Marathi', image: homeMarathi, position: 'object-center' },
+  { title: 'Hindi', image: homeDrama, position: 'object-center' },
+  { title: 'Live Shows', image: homeExperimental, position: 'object-center' },
+] as const
+
+function HomeEventCard({ item }: { item: (typeof homeShows)[number] }) {
+  const { event, image } = item
+  return (
+    <article className="reveal-card group flex h-full flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-card">
+      <Link to="/events/$eventId" params={{ eventId: event.id }} className="block overflow-hidden">
+        <img
+          src={image}
+          alt={`${event.title} live Indian theatre performance`}
+          width={1200}
+          height={900}
+          loading="lazy"
+          className="aspect-[4/3] w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+        />
+      </Link>
+      <div className="flex flex-1 flex-col p-5">
+        <p className="text-xs font-extrabold uppercase text-primary">{event.category}</p>
+        <h3 className="mt-2 font-display text-xl font-bold">
+          <Link to="/events/$eventId" params={{ eventId: event.id }} className="hover:text-primary">
+            {event.title}
+          </Link>
+        </h3>
+        <p className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+          <CalendarDays className="size-4 text-primary" />
+          {event.shortDate} · {event.time}
+        </p>
+        <p className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+          <MapPin className="size-4 text-primary" />
+          {event.venue}
+        </p>
+        <div className="mt-auto flex items-end justify-between gap-3 pt-5">
+          <div>
+            <p className="text-xs text-muted-foreground">Starting at</p>
+            <p className="text-lg font-extrabold">₹{event.price}</p>
+          </div>
+          <Button asChild>
+            <Link to="/events/$eventId/book" params={{ eventId: event.id }}>
+              Book Tickets <ArrowRight />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+export function HomePage() {
+  const featured = homeShows[0]
+  const supporting = homeShows.slice(1, 3)
+
+  return (
+    <SiteLayout>
+      <main>
+        <section className="bg-background px-4 pb-8 pt-4 sm:px-6 lg:px-8">
+          <div className="relative mx-auto min-h-[600px] max-w-[1440px] overflow-hidden rounded-3xl border border-border shadow-hero sm:min-h-[650px]">
+            <img
+              src={homeHero}
+              alt="Marathi actors performing on a theatre stage in Pune"
+              width={1536}
+              height={864}
+              fetchPriority="high"
+              className="absolute inset-0 size-full object-cover object-center"
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-background via-background/90 to-background/5" />
+            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-primary/20 to-transparent" />
+            <div className="relative z-10 flex min-h-[600px] max-w-7xl items-center px-6 py-16 sm:min-h-[650px] sm:px-10 lg:px-16">
+              <div className="animate-fade-in max-w-2xl">
+                <p className="text-xs font-extrabold uppercase tracking-widest text-primary sm:text-sm">Now playing in Pune</p>
+                <h1 className="mt-5 font-display text-5xl font-extrabold leading-[1.04] sm:text-6xl lg:text-7xl">
+                  Experience<br />Theatre <span className="text-primary">Live</span>
+                </h1>
+                <p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg sm:leading-8">
+                  Discover Marathi & Hindi theatre, drama, comedy and live performances happening across Pune.
+                </p>
+                <div className="mt-8 flex flex-col gap-3 min-[420px]:flex-row">
+                  <Button size="lg" asChild>
+                    <Link to="/events">Explore Events <ArrowRight /></Link>
+                  </Button>
+                  <Button size="lg" variant="outline" asChild>
+                    <Link to="/events">Browse Theatre</Link>
+                  </Button>
+                </div>
+                <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-background/90 px-4 py-2 text-sm font-bold text-primary shadow-sm">
+                  <Theater className="size-4" />50+ Shows This Season
+                </div>
+              </div>
+            </div>
+            <div className="absolute bottom-5 right-5 z-10 hidden w-64 rounded-2xl border border-border bg-background/95 p-5 shadow-hero backdrop-blur-sm md:block">
+              <p className="text-xs font-extrabold uppercase text-primary">Featured this week</p>
+              <p className="mt-2 font-display text-xl font-bold">Ek Marathi Natak</p>
+              <p className="mt-2 text-sm text-muted-foreground">10 Oct · Bal Gandharva</p>
+              <p className="mt-3 font-extrabold text-primary">From ₹300</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="border-y border-border bg-soft py-6">
+          <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 sm:px-6 lg:flex-row lg:items-center lg:px-8">
+            <p className="shrink-0 font-display text-lg font-bold">Discover what’s playing</p>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {['All', 'Marathi', 'Hindi', 'Drama', 'Comedy', 'Live Shows'].map((label, index) => (
+                <Button key={label} variant={index === 0 ? 'default' : 'outline'} size="sm" asChild>
+                  <Link to="/events">{label}</Link>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <Section>
+          <SectionHead title="What’s On Stage" copy="Stories, laughter and performances worth experiencing." />
+          {featured && (
+            <div className="grid gap-5 lg:grid-cols-[1.45fr_1fr]">
+              <article className="reveal-card group relative min-h-[430px] overflow-hidden rounded-2xl shadow-card sm:min-h-[540px]">
+                <img
+                  src={featured.image}
+                  alt="Ek Marathi Natak live Marathi theatre performance"
+                  width={1200}
+                  height={900}
+                  loading="lazy"
+                  className="absolute inset-0 size-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-foreground/90 via-foreground/15 to-transparent" />
+                <div className="absolute left-5 top-5 flex gap-2">
+                  <span className="rounded-full bg-background/95 px-3 py-1.5 text-xs font-extrabold uppercase text-primary">
+                    {featured.event.category}
+                  </span>
+                  <span className="rounded-full bg-background/95 px-3 py-1.5 text-xs font-bold text-foreground">
+                    ★ {featured.rating}
+                  </span>
+                </div>
+                <div className="absolute inset-x-0 bottom-0 p-6 text-background sm:p-8">
+                  <p className="text-sm font-semibold">
+                    {featured.event.shortDate} · {featured.event.time}
+                  </p>
+                  <h3 className="mt-2 font-display text-3xl font-extrabold sm:text-4xl">{featured.event.title}</h3>
+                  <p className="mt-2 text-sm text-background/80">{featured.event.venue}, Pune</p>
+                  <Button className="mt-5" asChild>
+                    <Link to="/events/$eventId/book" params={{ eventId: featured.event.id }}>
+                      Book Tickets <ArrowRight />
+                    </Link>
+                  </Button>
+                </div>
+              </article>
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
+                {supporting.map(item => (
+                  <article key={item.event.id} className="reveal-card group relative min-h-[255px] overflow-hidden rounded-2xl shadow-card">
+                    <img
+                      src={item.image}
+                      alt={`${item.event.title} Indian theatre performance`}
+                      width={1200}
+                      height={900}
+                      loading="lazy"
+                      className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-foreground/90 via-foreground/10 to-transparent" />
+                    <div className="absolute left-4 top-4 flex gap-2">
+                      <span className="rounded-full bg-background/95 px-3 py-1 text-xs font-bold text-primary">
+                        {item.event.category}
+                      </span>
+                      <span className="rounded-full bg-background/95 px-3 py-1 text-xs font-bold">★ {item.rating}</span>
+                    </div>
+                    <div className="absolute inset-x-0 bottom-0 p-5 text-background">
+                      <h3 className="font-display text-2xl font-extrabold">{item.event.title}</h3>
+                      <p className="mt-1 text-sm text-background/80">
+                        {item.event.shortDate} · {item.event.venue}
+                      </p>
+                      <Link to="/events/$eventId" params={{ eventId: item.event.id }} className="mt-3 inline-flex items-center gap-2 text-sm font-bold">
+                        View show <ArrowRight className="size-4" />
+                      </Link>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+          )}
+        </Section>
+
+        <Section soft>
+          <SectionHead title="This Week in Pune" copy="Find your next theatre night." link />
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+            {homeShows.map(item => (
+              <HomeEventCard key={item.event.id} item={item} />
+            ))}
+          </div>
+        </Section>
+
+        <section className="bg-background py-16 sm:py-20">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="relative min-h-[420px] overflow-hidden rounded-3xl shadow-hero sm:min-h-[500px]">
+              <img
+                src={homeAuditorium}
+                alt="Elegant Pune theatre auditorium before a live performance"
+                width={1536}
+                height={864}
+                loading="lazy"
+                className="absolute inset-0 size-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-foreground/90 via-foreground/50 to-transparent" />
+              <div className="relative flex min-h-[420px] max-w-xl flex-col justify-end p-7 text-background sm:min-h-[500px] sm:justify-center sm:p-12">
+                <p className="text-xs font-extrabold uppercase tracking-widest text-secondary">Pune theatre culture</p>
+                <h2 className="mt-4 font-display text-4xl font-extrabold sm:text-5xl">Where stories come alive.</h2>
+                <p className="mt-4 leading-7 text-background/80">
+                  From timeless Marathi classics to contemporary performances, discover the theatre culture of Pune.
+                </p>
+                <Button className="mt-7 w-fit" asChild>
+                  <Link to="/events">Explore Theatre <ArrowRight /></Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <Section>
+          <SectionHead title="Find Your Story" copy="Every mood has a stage waiting for you." />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {storyCards.map(({ title, image, position }) => (
+              <Link to="/events" key={title} className="reveal-card group relative aspect-[4/3] overflow-hidden rounded-2xl shadow-sm">
+                <img
+                  src={image}
+                  alt={`${title} performances in Pune`}
+                  width={1200}
+                  height={900}
+                  loading="lazy"
+                  className={`size-full object-cover ${position} transition-transform duration-500 group-hover:scale-[1.05]`}
+                />
+                <span className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-transparent to-transparent" />
+                <span className="absolute inset-x-0 bottom-0 flex items-center justify-between p-5 font-display text-xl font-extrabold uppercase text-background">
+                  <span>{title}</span>
+                  <span className="grid size-9 place-items-center rounded-full bg-background/95 text-primary">
+                    <ArrowRight className="size-4" />
+                  </span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </Section>
+
+        <section className="bg-accent py-14 sm:py-16">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <SectionHead title="Everything for a great theatre night." copy="Simple details, easy booking and tickets ready on your phone." />
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {[
+                { Icon: Ticket, title: 'Easy Booking' },
+                { Icon: QrCode, title: 'Digital Tickets' },
+                { Icon: Theater, title: 'Discover Local Theatre' },
+                { Icon: ShieldCheck, title: 'Simple & Clear' },
+              ].map(({ Icon, title }) => (
+                <div className="reveal-card flex items-center gap-4 rounded-xl border border-border bg-background p-5" key={title}>
+                  <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-accent text-primary">
+                    <Icon className="size-5" />
+                  </span>
+                  <h3 className="font-bold">{title}</h3>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-background py-16 sm:py-20">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            <div className="relative min-h-[400px] overflow-hidden rounded-3xl shadow-hero sm:min-h-[480px]">
+              <img
+                src={homeFinalStage}
+                alt="Open theatre curtains and an illuminated stage awaiting a performance"
+                width={1536}
+                height={864}
+                loading="lazy"
+                className="absolute inset-0 size-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/90 via-primary/55 to-transparent" />
+              <div className="relative flex min-h-[400px] max-w-xl flex-col justify-center p-7 text-primary-foreground sm:min-h-[480px] sm:p-12">
+                <Sparkles className="size-8" />
+                <h2 className="mt-5 font-display text-4xl font-extrabold sm:text-5xl">Your next theatre experience awaits.</h2>
+                <p className="mt-4 text-lg leading-7 text-primary-foreground/85">Discover memorable performances happening across Pune.</p>
+                <Button className="mt-7 w-fit bg-background text-primary hover:bg-background/90" size="lg" asChild>
+                  <Link to="/events">Explore Events <ArrowRight /></Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </SiteLayout>
+  )
+}
+
+export function EventsPage() {
+  const [eventList, setEventList] = useState<EventItem[]>(initialEvents)
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('All')
+  const [sort, setSort] = useState('Recommended')
+
+  useEffect(() => {
+    getPublishedEvents().then(res => setEventList(res))
+  }, [])
+
+  const filtered = useMemo(
+    () =>
+      eventList
+        .filter(e => (category === 'All' || e.category.includes(category)) && (e.title + ' ' + e.venue + ' ' + e.category).toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => (sort === 'Price' ? a.price - b.price : sort === 'Date' ? a.date.localeCompare(b.date) : 0)),
+    [eventList, search, category, sort]
+  )
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-12">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <PageIntro eyebrow="Live in Pune" title="Discover Events in Pune" copy="Browse Marathi and Hindi theatre experiences across the city." />
+          <div className="mt-8 max-w-2xl">
+            <SearchBar value={search} onChange={setSearch} />
+          </div>
+        </div>
+      </section>
+      <Section>
+        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {['All', 'Marathi', 'Hindi'].map(c => (
+              <Button key={c} variant={category === c ? 'default' : 'outline'} onClick={() => setCategory(c)}>
+                {c}
+              </Button>
+            ))}
+            <Button variant="outline">Any date</Button>
+            <Button variant="outline">All venues</Button>
+          </div>
+          <label className="flex items-center gap-3 text-sm font-semibold">
+            Sort
+            <select value={sort} onChange={e => setSort(e.target.value)} className="h-10 rounded-lg border border-border bg-background px-3">
+              <option>Recommended</option>
+              <option>Date</option>
+              <option>Price</option>
+            </select>
+          </label>
+        </div>
+        <p className="mb-5 text-sm text-muted-foreground">{filtered.length} events found</p>
+        <EventGrid items={filtered} />
+      </Section>
+    </SiteLayout>
+  )
+}
+
+function DetailFacts({ event }: { event: EventItem }) {
+  return (
+    <div className="grid gap-3 text-sm sm:grid-cols-2">
+      <span className="flex items-center gap-2">
+        <CalendarDays className="size-5 text-primary" />
+        {event.date}
+      </span>
+      <span className="flex items-center gap-2">
+        <Clock3 className="size-5 text-primary" />
+        {event.time}
+      </span>
+      <span className="flex items-center gap-2 sm:col-span-2">
+        <MapPin className="size-5 text-primary" />
+        {event.venue}, {event.city}
+      </span>
+    </div>
+  )
+}
+
+export function EventDetailsPage() {
+  const { eventId } = useParams({ from: '/events/$eventId' })
+  const [event, setEvent] = useState<EventItem>(primaryEvent)
+  const [availableSessions, setSessions] = useState<Session[]>([])
+
+  useEffect(() => {
+    getEventBySlug(eventId).then(res => {
+      if (res) setEvent(res)
+    })
+    getEventSessions(eventId).then(res => setSessions(res))
+  }, [eventId])
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <img src={event.image} alt={`${event.title} production banner`} width={1536} height={1024} className="h-[320px] w-full rounded-2xl object-cover sm:h-[470px]" />
+        </div>
+      </section>
+      <Section>
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div>
+            <span className="rounded-full bg-accent px-3 py-1.5 text-sm font-bold text-primary">{event.category}</span>
+            <h1 className="mt-5 font-display text-4xl font-extrabold sm:text-5xl">{event.title}</h1>
+            <div className="mt-6">
+              <DetailFacts event={event} />
+            </div>
+            <div className="mt-12 space-y-10">
+              <article>
+                <h2 className="font-display text-2xl font-bold">About the Event</h2>
+                <p className="mt-3 leading-7 text-muted-foreground">{event.description}</p>
+              </article>
+              <article>
+                <h2 className="font-display text-2xl font-bold">Cast / Performers</h2>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  {event.cast.map(c => (
+                    <span key={c} className="rounded-full border border-border px-4 py-2 text-sm font-semibold">
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              </article>
+              <article>
+                <h2 className="font-display text-2xl font-bold">Available Sessions</h2>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  {availableSessions.map(s => (
+                    <div key={s.id} className="rounded-xl border border-border p-4">
+                      <p className="font-bold">{s.day}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">{s.date}</p>
+                      <p className="mt-3 font-bold text-primary">{s.time}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
+              <article>
+                <h2 className="font-display text-2xl font-bold">Ticket Information</h2>
+                <p className="mt-3 text-muted-foreground">Silver from ₹300 · Gold from ₹500. Quantity-based entry; general admission.</p>
+              </article>
+              <article className="grid gap-8 sm:grid-cols-2">
+                <div>
+                  <h2 className="font-display text-xl font-bold">Terms & Conditions</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Please arrive 30 minutes early. Late entry is subject to venue policy.</p>
+                </div>
+                <div>
+                  <h2 className="font-display text-xl font-bold">Refund Policy</h2>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Tickets are non-refundable unless the event is cancelled.</p>
+                </div>
+              </article>
+            </div>
+          </div>
+          <aside>
+            <div className="sticky top-24 rounded-xl border border-border bg-card p-6 shadow-card">
+              <p className="text-sm text-muted-foreground">Tickets from</p>
+              <p className="mt-1 text-3xl font-extrabold">₹{event.price}</p>
+              <div className="my-5 h-px bg-border" />
+              <DetailFacts event={event} />
+              <Button className="mt-6 w-full" size="lg" asChild>
+                <Link to="/events/$eventId/book" params={{ eventId: event.id }}>
+                  Book Tickets <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          </aside>
+        </div>
+      </Section>
+    </SiteLayout>
+  )
+}
+
+export function BookingPage() {
+  const { eventId } = useParams({ from: '/events/$eventId/book' })
+  const navigate = useNavigate()
+  const [event, setEvent] = useState<EventItem>(primaryEvent)
+  const [sessions, setSessionsList] = useState<Session[]>([])
+  const [types, setTypesList] = useState<TicketType[]>([])
+  const [selectedSession, setSelectedSession] = useState('s1')
+  const [qty, setQty] = useState<Record<string, number>>({ silver: 1, gold: 0 })
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    getEventBySlug(eventId).then(res => {
+      if (res) setEvent(res)
+    })
+    getEventSessions(eventId).then(res => {
+      setSessionsList(res)
+      if (res.length > 0) setSelectedSession(res[0].id)
+    })
+  }, [eventId])
+
+  useEffect(() => {
+    if (selectedSession) {
+      getSessionTicketTypes(selectedSession).then(res => {
+        setTypesList(res)
+        const initialQty: Record<string, number> = {}
+        res.forEach((t, i) => {
+          initialQty[t.id] = i === 0 ? 1 : 0
+        })
+        setQty(initialQty)
+      })
+    }
+  }, [selectedSession])
+
+  const subtotal = types.reduce((sum, t) => sum + t.price * (qty[t.id] || 0), 0)
+  const fee = subtotal ? 50 : 0
+
+  const handleContinueToCheckout = async () => {
+    setSubmitting(true)
+    const items = Object.entries(qty)
+      .filter(([_, q]) => q > 0)
+      .map(([ticket_type_id, quantity]) => ({ ticket_type_id, quantity }))
+
+    try {
+      const order = await createOrder(event.id, selectedSession, items)
+      localStorage.setItem('rangtix_current_order', JSON.stringify({ ...order, eventTitle: event.title, subtotal, fees: fee, total: subtotal + fee }))
+      navigate({ to: '/checkout' })
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to create booking order')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-10">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <p className="text-sm font-bold text-primary">Booking</p>
+          <h1 className="mt-2 font-display text-3xl font-extrabold">{event.title}</h1>
+          <p className="mt-2 text-muted-foreground">{event.venue}, Pune</p>
+        </div>
+      </section>
+      <section className="py-12">
+        <div className="mx-auto grid max-w-5xl gap-8 px-4 sm:px-6 lg:grid-cols-[1fr_340px]">
+          <div className="space-y-10">
+            <div>
+              <h2 className="font-display text-2xl font-bold">1. Choose a session</h2>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                {sessions.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSelectedSession(s.id)}
+                    className={`rounded-xl border p-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                      selectedSession === s.id ? 'border-primary bg-accent' : 'border-border bg-background'
+                    }`}
+                  >
+                    <p className="font-bold">{s.day}</p>
+                    <p className="text-sm text-muted-foreground">{s.date}</p>
+                    <p className="mt-3 font-bold text-primary">{s.time}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h2 className="font-display text-2xl font-bold">2. Select ticket quantity</h2>
+              <p className="mt-2 text-sm text-muted-foreground">General admission ticket types.</p>
+              <div className="mt-5 divide-y divide-border rounded-xl border border-border">
+                {types.map(t => (
+                  <div key={t.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4 p-5">
+                    <div className="min-w-0">
+                      <h3 className="font-bold uppercase">{t.name}</h3>
+                      <p className="mt-1 text-xl font-extrabold">₹{t.price}</p>
+                      <p className="text-xs text-muted-foreground">{t.available} available</p>
+                    </div>
+                    <QuantitySelector value={qty[t.id] || 0} onChange={v => setQty(q => ({ ...q, [t.id]: v }))} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+          <aside>
+            <div className="sticky top-24 rounded-xl border border-border bg-card p-6 shadow-card">
+              <h2 className="font-display text-xl font-bold">Price summary</h2>
+              <div className="mt-5 space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>₹{subtotal}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Booking fee</span>
+                  <span>₹{fee}</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-4 text-lg font-extrabold">
+                  <span>Total</span>
+                  <span>₹{subtotal + fee}</span>
+                </div>
+              </div>
+              <Button disabled={!subtotal || submitting} className="mt-6 w-full" size="lg" onClick={handleContinueToCheckout}>
+                {submitting ? 'Creating Order...' : subtotal > 0 ? 'Continue to Checkout' : 'Select tickets'}
+              </Button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
+
+const Field = ({ label, type = 'text', placeholder, value, onChange }: { label: string; type?: string; placeholder: string; value?: string; onChange?: (e: any) => void }) => (
+  <label className="grid gap-2 text-sm font-semibold">
+    {label}
+    <Input type={type} placeholder={placeholder} value={value} onChange={onChange} className="h-11" />
+  </label>
+)
+
+export function CheckoutPage() {
+  const [name, setName] = useState('Ananya Joshi')
+  const [email, setEmail] = useState('ananya@example.com')
+  const [phone, setPhone] = useState('+91 98765 43210')
+  const [order, setOrder] = useState<any>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) {
+        setEmail(data.user.email || 'ananya@example.com')
+        setName(data.user.user_metadata?.full_name || 'Ananya Joshi')
+      }
+    })
+    try {
+      const stored = JSON.parse(localStorage.getItem('rangtix_current_order') || '{}')
+      setOrder(stored)
+    } catch (e) {
+      // default
+    }
+  }, [])
+
+  const eventTitle = order?.eventTitle || 'Ek Marathi Natak'
+  const subtotal = order?.subtotal ?? 1050
+  const fees = order?.fees ?? 50
+  const total = order?.total_amount || order?.total || 1100
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-10">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <PageIntro eyebrow="Checkout" title="Complete your booking" copy="Review your order and enter customer details." />
+        </div>
+      </section>
+      <section className="py-12">
+        <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[1fr_380px]">
+          <div className="space-y-7">
+            <section className="rounded-xl border border-border p-6">
+              <h2 className="font-display text-xl font-bold">Customer Information</h2>
+              <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Field label="Full Name" placeholder="Ananya Joshi" value={name} onChange={e => setName(e.target.value)} />
+                </div>
+                <Field label="Email" type="email" placeholder="ananya@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+                <Field label="Phone" type="tel" placeholder="+91 98765 43210" value={phone} onChange={e => setPhone(e.target.value)} />
+              </div>
+            </section>
+            <section className="rounded-xl border border-border p-6">
+              <h2 className="font-display text-xl font-bold">Booking Details</h2>
+              <div className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-muted-foreground">Event</p>
+                  <p className="mt-1 font-bold">{eventTitle}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Session</p>
+                  <p className="mt-1 font-bold">10 Oct 2026 · 7:00 PM</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Venue</p>
+                  <p className="mt-1 font-bold">Bal Gandharva Rang Mandir</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tickets</p>
+                  <p className="mt-1 font-bold">Silver × 1, Gold × 2</p>
+                </div>
+              </div>
+            </section>
+          </div>
+          <aside>
+            <div className="rounded-xl border border-border bg-card p-6 shadow-card">
+              <h2 className="font-display text-xl font-bold">Order Summary</h2>
+              <div className="mt-5 flex gap-4">
+                <img src={primaryEvent.image} alt={eventTitle} width={1024} height={1280} className="size-20 rounded-lg object-cover" />
+                <div>
+                  <p className="font-bold">{eventTitle}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">Confirmed selection</p>
+                </div>
+              </div>
+              <div className="mt-6 space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span>₹{subtotal}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Convenience Fee</span>
+                  <span>₹{fees}</span>
+                </div>
+                <div className="flex justify-between border-t border-border pt-4 text-lg font-extrabold">
+                  <span>Total</span>
+                  <span>₹{total}</span>
+                </div>
+              </div>
+              <Button className="mt-6 w-full" size="lg" asChild>
+                <Link to="/payment">Proceed to Payment <ArrowRight /></Link>
+              </Button>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
+
+export function PaymentPage() {
+  const [status, setStatus] = useState<'success' | 'failed' | 'pending'>('pending')
+  const [processing, setProcessing] = useState(false)
+  const navigate = useNavigate()
+
+  const handleSimulatePayment = async (targetStatus: 'success' | 'failed' | 'pending') => {
+    setStatus(targetStatus)
+    if (targetStatus === 'success') {
+      setProcessing(true)
+      try {
+        const orderData = JSON.parse(localStorage.getItem('rangtix_current_order') || '{}')
+        const result = await simulatePayment(orderData.orderId || orderData.bookingId || 'CMW-2026-001245', 'success', orderData.total_amount || orderData.total || 1100)
+        localStorage.setItem('rangtix_current_order', JSON.stringify({ ...orderData, bookingId: result.bookingId, status: 'confirmed' }))
+        toast.success('Payment verified successfully!')
+        navigate({ to: '/confirmation' })
+      } catch (err: any) {
+        toast.error('Payment error: ' + (err.message || 'Payment simulation failed'))
+      } finally {
+        setProcessing(false)
+      }
+    }
+  }
+
+  const data = {
+    success: { Icon: CheckCircle2, title: 'Payment Successful', copy: 'Your booking has been confirmed.', tone: 'text-success' },
+    failed: { Icon: XCircle, title: 'Payment Failed', copy: 'Your payment could not be completed.', tone: 'text-destructive' },
+    pending: { Icon: Hourglass, title: 'Payment Pending', copy: "We're waiting for payment confirmation.", tone: 'text-primary' },
+  }[status]
+
+  return (
+    <SiteLayout>
+      <section className="min-h-[70vh] bg-soft py-16">
+        <div className="mx-auto max-w-xl px-4">
+          <div className="rounded-xl border border-border bg-card p-8 text-center shadow-card sm:p-12">
+            <data.Icon className={`mx-auto size-16 ${data.tone}`} />
+            <h1 className="mt-6 font-display text-3xl font-extrabold">{data.title}</h1>
+            <p className="mt-3 text-muted-foreground">{data.copy}</p>
+            <div className="mt-8">
+              {status === 'success' ? (
+                <Button size="lg" asChild>
+                  <Link to="/confirmation">View Booking</Link>
+                </Button>
+              ) : status === 'failed' ? (
+                <Button size="lg" onClick={() => handleSimulatePayment('pending')}>
+                  Try Again
+                </Button>
+              ) : (
+                <Button size="lg" variant="outline" onClick={() => handleSimulatePayment('success')} disabled={processing}>
+                  {processing ? 'Confirming...' : 'Check Status'}
+                </Button>
+              )}
+            </div>
+            <div className="mt-10 border-t border-border pt-6">
+              <p className="text-xs font-bold uppercase text-muted-foreground">Simulated payment provider</p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                <Button size="sm" variant="outline" onClick={() => handleSimulatePayment('success')}>
+                  Simulate Success
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleSimulatePayment('failed')}>
+                  Simulate Failure
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleSimulatePayment('pending')}>
+                  Simulate Pending
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
+
+export function ConfirmationPage() {
+  const [order, setOrder] = useState<any>(null)
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('rangtix_current_order') || '{}')
+      setOrder(stored)
+    } catch (e) {
+      // default
+    }
+  }, [])
+
+  const bookingId = order?.bookingId || order?.order_number || 'CMW-2026-001245'
+  const eventTitle = order?.eventTitle || 'Ek Marathi Natak'
+  const totalPaid = order?.total_amount || order?.total || 1100
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-14">
+        <div className="mx-auto max-w-3xl px-4">
+          <div className="rounded-xl border border-border bg-card p-7 shadow-card sm:p-10">
+            <div className="text-center">
+              <span className="mx-auto grid size-16 place-items-center rounded-full bg-success-soft text-success">
+                <Check className="size-8" />
+              </span>
+              <h1 className="mt-5 font-display text-4xl font-extrabold">Booking Confirmed</h1>
+              <p className="mt-2 text-muted-foreground">Your ticket is ready.</p>
+            </div>
+            <div className="mt-8 rounded-xl bg-accent p-5 text-center">
+              <p className="text-xs font-bold uppercase text-primary">Booking ID</p>
+              <p className="mt-1 font-display text-2xl font-extrabold">{bookingId}</p>
+            </div>
+            <div className="mt-8 grid gap-5 text-sm sm:grid-cols-2">
+              {[
+                ['Event', eventTitle],
+                ['Date', '10 October 2026'],
+                ['Time', '7:00 PM'],
+                ['Venue', 'Bal Gandharva Rang Mandir'],
+                ['Tickets', 'Silver × 1, Gold × 2'],
+                ['Total Paid', `₹${totalPaid}`],
+              ].map(([a, b]) => (
+                <div key={a}>
+                  <p className="text-muted-foreground">{a}</p>
+                  <p className="mt-1 font-bold">{b}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-9 flex flex-wrap justify-center gap-3">
+              <Button size="lg" asChild>
+                <Link to="/ticket">View Digital Ticket</Link>
+              </Button>
+              <Button size="lg" variant="outline" asChild>
+                <Link to="/my-tickets">Go to My Tickets</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
+
+function FakeQr() {
+  return (
+    <div aria-label="Visual QR placeholder" className="grid size-36 grid-cols-7 gap-1 bg-foreground p-3">
+      {Array.from({ length: 49 }, (_, i) => (
+        <span key={i} className={(i * 7 + i * 3) % 5 < 2 ? 'bg-background' : 'bg-foreground'} />
+      ))}
+    </div>
+  )
+}
+
+export function TicketPage() {
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-12">
+        <div className="mx-auto max-w-md px-4">
+          <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-hero">
+            <img src={primaryEvent.image} alt="Ek Marathi Natak" width={1024} height={1280} className="h-48 w-full object-cover" />
+            <div className="p-6">
+              <div className="flex items-center justify-between gap-4">
+                <span className="rounded-full bg-accent px-3 py-1 text-xs font-bold text-primary">MARATHI THEATRE</span>
+                <StatusBadge status="Upcoming" />
+              </div>
+              <h1 className="mt-5 font-display text-3xl font-extrabold">Ek Marathi Natak</h1>
+              <div className="mt-5 grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Date & time</p>
+                  <p className="mt-1 font-bold">10 Oct · 7:00 PM</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Customer</p>
+                  <p className="mt-1 font-bold">Ananya Joshi</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-muted-foreground">Venue</p>
+                  <p className="mt-1 font-bold">Bal Gandharva Rang Mandir, Pune</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Tickets</p>
+                  <p className="mt-1 font-bold">
+                    Silver × 1<br />Gold × 2
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Booking ID</p>
+                  <p className="mt-1 font-bold">CMW-2026-001245</p>
+                </div>
+              </div>
+              <div className="my-7 border-t border-dashed border-border" />
+              <div className="flex flex-col items-center">
+                <FakeQr />
+                <p className="mt-3 text-xs font-semibold text-muted-foreground">Active Digital Ticket QR</p>
+              </div>
+              <div className="mt-7 rounded-xl bg-accent p-4">
+                <p className="font-bold">Entry instructions</p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">Keep this ticket ready and arrive 30 minutes before showtime.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
+
+export function MyTicketsPage() {
+  const [tab, setTab] = useState<'Upcoming' | 'Past'>('Upcoming')
+  const [ticketsList, setTicketsList] = useState<Ticket[]>(initialTickets)
+
+  useEffect(() => {
+    getMyTickets().then(res => setTicketsList(res))
+  }, [])
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-12">
+        <div className="mx-auto max-w-5xl px-4 sm:px-6">
+          <PageIntro title="My Tickets" copy="Your bookings, all in one place." />
+          <div className="mt-8 flex gap-2">
+            {(['Upcoming', 'Past'] as const).map(t => (
+              <Button key={t} variant={tab === t ? 'default' : 'outline'} onClick={() => setTab(t)}>
+                {t}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </section>
+      <section className="py-12">
+        <div className="mx-auto max-w-5xl space-y-5 px-4 sm:px-6">
+          {ticketsList
+            .filter(t => t.status === tab)
+            .map(t => (
+              <article key={t.id} className="grid overflow-hidden rounded-xl border border-border bg-card shadow-card sm:grid-cols-[220px_1fr]">
+                <img src={t.event.image} alt={`${t.event.title}`} width={1024} height={1280} className="h-52 w-full object-cover sm:h-full" />
+                <div className="p-6">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <StatusBadge status={t.status} />
+                      <h2 className="mt-3 font-display text-2xl font-bold">{t.event.title}</h2>
+                    </div>
+                    <span className="text-xs font-semibold text-muted-foreground">{t.bookingId}</span>
+                  </div>
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    {t.session} · {t.event.venue}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold">{t.ticketType}</p>
+                  <Button className="mt-5" variant={tab === 'Past' ? 'outline' : 'default'} asChild>
+                    <Link to="/ticket">View Ticket</Link>
+                  </Button>
+                </div>
+              </article>
+            ))}
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
+
+export function ProfilePage() {
+  const [profile, setProfile] = useState<any>(null)
+  const [fullName, setFullName] = useState('Ananya Joshi')
+  const [email, setEmail] = useState('ananya@example.com')
+  const [phone, setPhone] = useState('+91 98765 43210')
+
+  useEffect(() => {
+    getUserProfile().then(p => {
+      if (p) {
+        setProfile(p)
+        setFullName(p.full_name || 'Ananya Joshi')
+        setEmail(p.email || 'ananya@example.com')
+        setPhone(p.phone || '+91 98765 43210')
+      }
+    })
+  }, [])
+
+  const handleSave = async () => {
+    const { data: userData } = await supabase.auth.getUser()
+    if (userData.user) {
+      const { error } = await supabase.from('profiles').update({ full_name: fullName, phone }).eq('id', userData.user.id)
+      if (error) toast.error('Failed to update profile: ' + error.message)
+      else toast.success('Profile saved successfully!')
+    } else {
+      toast.success('Profile saved successfully!')
+    }
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    toast.success('Logged out successfully')
+    window.location.href = '/'
+  }
+
+  return (
+    <SiteLayout>
+      <section className="bg-soft py-12">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+          <PageIntro title="Your Profile" copy="Manage your account information and preferences." />
+        </div>
+      </section>
+      <section className="py-12">
+        <div className="mx-auto grid max-w-4xl gap-6 px-4 sm:px-6 md:grid-cols-2">
+          <div className="rounded-xl border border-border p-6">
+            <div className="flex items-center gap-4">
+              <span className="grid size-14 place-items-center rounded-full bg-accent text-xl font-extrabold text-primary">
+                {fullName.substring(0, 2).toUpperCase()}
+              </span>
+              <div>
+                <h2 className="font-display text-xl font-bold">{fullName}</h2>
+                <p className="text-sm text-muted-foreground font-semibold capitalize">{profile?.role || 'Customer'}</p>
+              </div>
+            </div>
+            <div className="mt-6 grid gap-4">
+              <Field label="Name" placeholder="Ananya Joshi" value={fullName} onChange={e => setFullName(e.target.value)} />
+              <Field label="Email" placeholder="ananya@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+              <Field label="Phone" placeholder="+91 98765 43210" value={phone} onChange={e => setPhone(e.target.value)} />
+            </div>
+            <Button className="mt-6" onClick={handleSave}>
+              Save Changes
+            </Button>
+          </div>
+          <div className="space-y-4">
+            <Link to="/my-tickets" className="flex items-center justify-between rounded-xl border border-border p-5 hover:bg-accent">
+              <span className="flex items-center gap-3 font-bold">
+                <Ticket className="text-primary" />
+                My Tickets
+              </span>
+              <ChevronRight />
+            </Link>
+            <Link to="/my-tickets" className="flex items-center justify-between rounded-xl border border-border p-5 hover:bg-accent">
+              <span className="flex items-center gap-3 font-bold">
+                <CalendarDays className="text-primary" />
+                Bookings
+              </span>
+              <ChevronRight />
+            </Link>
+            <Button variant="outline" className="w-full" onClick={handleLogout}>
+              Logout
+            </Button>
+          </div>
+        </div>
+      </section>
+    </SiteLayout>
+  )
+}
